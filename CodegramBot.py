@@ -10,7 +10,7 @@ intents.messages = True
 intents.guilds = True
 intents.presences = True
 intents.members = True
-intents.message_content = True
+# intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
