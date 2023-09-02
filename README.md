@@ -18,7 +18,7 @@ Welcome to the official documentation for **CodegramBot**. CodegramBot is a Disc
 
 To add a user to the tracking system:
 
-`!CodegramBot <username>`
+`!CodegramBot track <username>`
 
 **Usage:** Replace `<username>` with the username of the person you want to add.
 
