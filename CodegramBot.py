@@ -21,6 +21,25 @@ TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 USERNAMES = []
 reported_problems = {}
 
+from datetime import datetime, timedelta
+
+def days_since_last_activity(username):
+    submissions = getLatestAcceptedSubmits(username, limit=1)
+    if not submissions:
+        return None
+
+    # Ensure the timestamp is an integer
+    latest_submission_timestamp = submissions[0]['timestamp']
+    if isinstance(latest_submission_timestamp, str):
+        latest_submission_timestamp = int(latest_submission_timestamp)
+    latest_submission_date = datetime.fromtimestamp(latest_submission_timestamp)
+
+    # Calculating the difference in days
+    difference = datetime.utcnow() - latest_submission_date
+    return difference.days
+
+
+
 def isValidUsername(userId):
     return bool(re.match("^[A-Za-z0-9_]*$", userId))
 
@@ -87,7 +106,7 @@ def getLatestAcceptedSubmits(userId, limit=10):
 async def on_ready():
     print(f'Bot has logged in as {bot.user.name}({bot.user.id})')
     check_leetcode_updates.start()
-    
+
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandInvokeError):
@@ -101,6 +120,17 @@ channel_ids = {}
 async def CodegramBot(ctx):
     if ctx.invoked_subcommand is None:
         await ctx.send('Please specify a valid subcommand. For example: track <username>.')
+
+@CodegramBot.command(name="activity")
+async def user_activity(ctx, username: str):
+    try:
+        days = days_since_last_activity(username)
+        if days is None:
+            await ctx.send(f"{username} has no accepted submissions on LeetCode.")
+        else:
+            await ctx.send(f"{username} has not solved a problem in {days} days.")
+    except Exception as e:
+        await ctx.send(f"An error occurred: {e}")
 
 @CodegramBot.command()
 async def track(ctx, username: str):
@@ -119,6 +149,43 @@ async def who_is_better(ctx, username1: str, username2: str):
         await ctx.send(result)
     except Exception as e:
         await ctx.send(f"An error occurred: {e}")
+
+
+@CodegramBot.command(name="grindset")
+async def grindset(ctx, username: str):
+    try:
+        average = calculate_average_solved_per_day(username)
+        if average is None:
+            await ctx.send(f"Couldn't fetch data for {username}. They might not have solved any problems on LeetCode.")
+            return
+        await ctx.send(f"{username} solves an average of {average:.2f} problem(s) per day.")
+    except Exception as e:
+        await ctx.send(f"An error occurred: {e}")
+
+
+def calculate_average_solved_per_day(username):
+    # Fetch the earliest submission
+    submissions = getLatestAcceptedSubmits(username, limit=1000)  # Assuming no one solves more than 1000 problems in a day
+    if not submissions:
+        return None
+
+    first_submission_timestamp = min([submission['timestamp'] for submission in submissions])
+    if isinstance(first_submission_timestamp, str):
+        first_submission_timestamp = int(first_submission_timestamp)
+
+    first_submission_date = datetime.fromtimestamp(first_submission_timestamp)
+    difference = datetime.utcnow() - first_submission_date
+    days_difference = difference.days
+
+    # Get total problems solved
+    stats = getSubmitStats(username)
+    if not stats:
+        return None
+    total_solved = sum([d['count'] for d in stats['submitStats']['acSubmissionNum']])
+    
+    # Calculate the average
+    average = total_solved / days_difference
+    return average
 
 def compare_users_stats(username1, username2):
     stats1 = getSubmitStats(username1)
@@ -139,6 +206,41 @@ def compare_users_stats(username1, username2):
         return f"{username2} has solved more problems than {username1} ({solved2} vs {solved1})."
     else:
         return f"{username1} and {username2} have solved the same number of problems ({solved1})."
+def display_user_stats(username):
+    stats = getSubmitStats(username)
+    if not stats:
+        return f"Username {username} is invalid or not found."
+    
+    total_solved = sum([d['count'] for d in stats['submitStats']['acSubmissionNum']])
+    
+    # Formatting the data for output
+    stats_str = f"Statistics for {username}:\n"
+    stats_str += f"Total Problems Solved: {total_solved}\n"
+    
+    for difficulty_stat in stats['submitStats']['acSubmissionNum']:
+        stats_str += f"{difficulty_stat['difficulty']} Problems Solved: {difficulty_stat['count']} out of {difficulty_stat['submissions']} submissions\n"
+    
+    return stats_str
+
+bot.remove_command('help')
+
+@CodegramBot.command(name='help')
+async def custom_help(ctx):
+    help_str = "List of available commands under `CodegramBot`:\n"
+    
+    for command in CodegramBot.walk_commands():
+        help_str += f"!CodegramBot {command.name}\n"
+
+    await ctx.send(help_str)
+
+
+@CodegramBot.command(name="stats")
+async def user_stats(ctx, username: str):
+    try:
+        stats_message = display_user_stats(username)
+        await ctx.send(stats_message)
+    except Exception as e:
+        await ctx.send(f"An error occurred: {e}")
 
 async def check_for_updates(username, channel_id):
     submissions = getLatestAcceptedSubmits(username)
